@@ -173,7 +173,7 @@ $('schemaSql').value=schema;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000)}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(db));scheduleCloudSync()}catch(e){toast('Could not save locally. Export a backup and check browser storage settings.')}}
 function loadLocal(){try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed.orders))db=parsed}}catch(e){console.warn(e)}}
-function idForNext(){const y=new Date().getFullYear();const existing=db.orders.map(o=>o.orderId||'').filter(s=>s.startsWith('SS-'+y+'-')).map(s=>Number(s.split('-').pop())||0);return 'SS-'+y+'-'+String(Math.max(db.nextOrder-1,0,...existing)+1).padStart(4,'0')}
+function idForNext(){const y=new Date().getFullYear();const prefix='SS-'+y+'-';const existing=db.orders.filter(o=>!o.deleted).map(o=>o.orderId||'').filter(s=>s.startsWith(prefix)).map(s=>Number(s.slice(prefix.length))||0);return prefix+String(Math.max(0,...existing)+1).padStart(4,'0')}
 function productsValue(o){return (o.products||[]).reduce((a,p)=>a+(Number(p.qty)||1)*(Number(p.price)||0),0)}
 function totalDue(o){return Math.max(0,productsValue(o)+(Number(o.previousBalance)||0)+(Number(o.shipping)||0)-(Number(o.discount)||0))}
 function totalPaid(o){return (o.payments||[]).reduce((a,p)=>a+(Number(p.amount)||0),0)}
