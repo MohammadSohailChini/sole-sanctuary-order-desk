@@ -126,7 +126,7 @@
     <div class="money-box" style="margin-top:15px"><div class="money-row"><span>Product value</span><strong id="calcProducts">₹0</strong></div><div class="money-row"><span>Previous balance + shipping − discount</span><strong id="calcAdjustments">₹0</strong></div><div class="money-row total"><span>Total amount due</span><strong id="calcDue">₹0</strong></div><div class="money-row"><span>Previously recorded payments</span><strong id="calcPaid">₹0</strong></div><div class="money-row"><span>New payment being recorded</span><strong id="calcNewPayment">₹0</strong></div><div class="money-row total"><span>Balance after this payment</span><strong id="calcBalance">₹0</strong></div></div>
    </form>
   </div>
-  <div class="modal-foot"><button class="btn" id="cancelModal">Cancel</button><button class="btn primary" id="saveOrder">Save order</button></div>
+  <div class="modal-foot"><button class="btn danger hidden" id="deleteOrder">Delete order</button><button class="btn" id="cancelModal">Cancel</button><button class="btn primary" id="saveOrder">Save order</button></div>
  </div>
 </div>
 
@@ -185,7 +185,7 @@ function productsSummary(o){return (o.products||[]).map(p=>p.name).filter(Boolea
 function orderPeriod(o,period){const d=new Date((o.date||'')+'T12:00:00'),now=new Date();if(period==='all')return true;if(Number.isNaN(d.getTime()))return false;if(period==='month')return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();if(period==='year')return d.getFullYear()===now.getFullYear();if(period==='30'){const ago=new Date();ago.setDate(now.getDate()-30);return d>=new Date(ago.toDateString())&&d<=now}return true}
 function nav(view){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));if(view==='dashboard')renderDashboard();if(view==='orders')renderOrders();if(view==='customers')renderCustomers()}
 function renderDashboard(){
- const period=$('dashboardPeriod').value;const orders=db.orders.filter(o=>orderPeriod(o,period));const active=orders.filter(o=>o.status!=='Cancelled');
+ const period=$('dashboardPeriod').value;const orders=db.orders.filter(o=>!o.deleted&&orderPeriod(o,period));const active=orders.filter(o=>o.status!=='Cancelled');
  const sales=active.reduce((a,o)=>a+totalDue(o),0),paid=active.reduce((a,o)=>a+totalPaid(o),0),due=active.reduce((a,o)=>a+balance(o),0),open=active.filter(o=>o.status!=='Delivered').length;
  $('statSales').textContent=fmt(sales);$('statReceived').textContent=fmt(paid);$('statOutstanding').textContent=fmt(due);$('statOpen').textContent=open;$('statOrders').textContent=active.length+' active orders';
  const recent=[...orders].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,6);
@@ -200,17 +200,17 @@ function renderDashboard(){
 }
 function renderOrders(){
  const q=$('orderSearch').value.toLowerCase(),sf=$('orderStatusFilter').value,pf=$('paymentFilter').value;
- const list=[...db.orders].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).filter(o=>{
+ const visibleOrders=db.orders.filter(o=>!o.deleted);const list=[...visibleOrders].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).filter(o=>{
   const hay=[o.orderId,o.customer,o.phone,productsSummary(o)].join(' ').toLowerCase();
   return (!q||hay.includes(q))&&(!sf||o.status===sf)&&(!pf||paymentStatus(o)===pf);
  });
- $('orderCountLabel').textContent=list.length+' of '+db.orders.length+' orders';
+ $('orderCountLabel').textContent=list.length+' of '+visibleOrders.length+' orders';
  $('ordersTable').innerHTML=list.map(o=>`<tr><td><strong>${esc(o.orderId)}</strong><br><span class="subtle">${esc(o.date||'')}</span></td><td>${esc(o.customer)}<br><span class="subtle">${esc(o.phone||'No number')}</span></td><td title="${esc(productsSummary(o))}">${esc(productsSummary(o).slice(0,35))}${productsSummary(o).length>35?'…':''}</td><td><strong>${fmt(totalDue(o))}</strong></td><td>${fmt(totalPaid(o))}</td><td><strong>${fmt(balance(o))}</strong></td><td><span class="pill ${paymentClass(paymentStatus(o))}">${esc(paymentStatus(o))}</span></td><td><span class="pill ${orderStatusClass(o.status)}">${esc(o.status)}</span></td><td><div class="panel-actions"><button class="btn mini" data-action="view" data-id="${esc(o.id)}">View</button><button class="btn mini" data-action="edit" data-id="${esc(o.id)}">Edit</button><button class="btn mini" data-action="share" data-id="${esc(o.id)}">WhatsApp</button></div></td></tr>`).join('');
  $('ordersEmpty').classList.toggle('hidden',list.length>0);
 }
 function customerGroups(){
  const map=new Map();
- db.orders.forEach(o=>{const key=(o.phone||'').replace(/\D/g,'')||('name:'+o.customer.toLowerCase().trim());if(!map.has(key))map.set(key,{key,name:o.customer,phone:o.phone||'',orders:[],sales:0,paid:0,due:0});const c=map.get(key);c.orders.push(o);c.sales+=totalDue(o);c.paid+=totalPaid(o);c.due+=balance(o);if(!c.phone&&o.phone)c.phone=o.phone});
+ db.orders.filter(o=>!o.deleted).forEach(o=>{const key=(o.phone||'').replace(/\D/g,'')||('name:'+o.customer.toLowerCase().trim());if(!map.has(key))map.set(key,{key,name:o.customer,phone:o.phone||'',orders:[],sales:0,paid:0,due:0});const c=map.get(key);c.orders.push(o);c.sales+=totalDue(o);c.paid+=totalPaid(o);c.due+=balance(o);if(!c.phone&&o.phone)c.phone=o.phone});
  return [...map.values()].sort((a,b)=>b.sales-a.sales)
 }
 function renderCustomers(){
@@ -234,10 +234,20 @@ function editingOrder(){const id=$('editId').value;return id?db.orders.find(o=>o
 function openOrderModal(order=null){
  $('orderForm').reset();$('productEditors').innerHTML='';$('editId').value=order?.id||'';$('modalTitle').textContent=order?'Edit '+order.orderId:'Create new order';
  $('fOrderId').value=order?.orderId||idForNext();$('fDate').value=order?.date||today();$('fCustomer').value=order?.customer||'';$('fPhone').value=order?.phone||'';$('fPaymentMethod').value=order?.paymentMethod||'';$('fOrderStatus').value=order?.status||'Order placed';
- $('fPrevious').value=order?.previousBalance||0;$('fShipping').value=order?.shipping||0;$('fDiscount').value=order?.discount||0;$('fEta').value=order?.eta||'';$('fDeliveredDate').value=order?.deliveredDate||'';$('fTracking').value=order?.tracking||'';$('fDeliveryWindow').value=order?.deliveryWindow||'';$('fPaymentAmount').value=0;$('fPaymentDate').value=today();$('fTransaction').value='';$('fNote').value='';$('fNotes').value=order?.notes||'';
+ $('deleteOrder').classList.toggle('hidden',!order);$('fPrevious').value=order?.previousBalance||0;$('fShipping').value=order?.shipping||0;$('fDiscount').value=order?.discount||0;$('fEta').value=order?.eta||'';$('fDeliveredDate').value=order?.deliveredDate||'';$('fTracking').value=order?.tracking||'';$('fDeliveryWindow').value=order?.deliveryWindow||'';$('fPaymentAmount').value=0;$('fPaymentDate').value=today();$('fTransaction').value='';$('fNote').value='';$('fNotes').value=order?.notes||'';
  (order?.products?.length?order.products:[{}]).forEach(p=>makeProductEditor(p));$('orderModal').classList.add('open');document.body.style.overflow='hidden';calcEditor()
 }
 function closeOrderModal(){$('orderModal').classList.remove('open');document.body.style.overflow=''}
+function deleteEditingOrder(){
+ const order=editingOrder();if(!order)return;
+ if(!confirm(`Delete order ${order.orderId} for ${order.customer}? This order will be removed from active records and the deletion will sync to your signed-in devices.`))return;
+ // Keep a synced tombstone so another device does not reintroduce this order during merge.
+ const deletedAt=new Date().toISOString();
+ db.orders=db.orders.map(o=>o.id===order.id?{...o,deleted:true,deletedAt,updatedAt:deletedAt}:o);
+ persist();closeOrderModal();
+ if($('detailModal').classList.contains('open'))$('detailModal').classList.remove('open');
+ renderAll();toast('Order deleted.');
+}
 function saveOrder(){
  const form=$('orderForm');if(!form.reportValidity())return;
  const old=editingOrder();const products=editorProducts();
@@ -381,7 +391,10 @@ async function syncCloudOrders(options={}){
    const cloudCopy=merged.get(o.id);
    const localTime=Date.parse(o.updatedAt||o.createdAt||'')||0;
    const cloudTime=Date.parse(cloudCopy?.updatedAt||'')||0;
-   if(!cloudCopy||localTime>cloudTime)merged.set(o.id,o);
+   if(o.deleted||cloudCopy?.deleted){
+    const tombstone=o.deleted?o:cloudCopy;
+    merged.set(o.id,tombstone);
+   }else if(!cloudCopy||localTime>cloudTime)merged.set(o.id,o);
   });
   db.orders=[...merged.values()];
   db.nextOrder=Math.max(Number(db.nextOrder)||1,db.orders.length+1);
@@ -421,7 +434,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>nav(
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.goto)));
 $('newOrderBtn').onclick=$('ordersNew').onclick=$('quickNew').onclick=()=>openOrderModal();
 $('quickCustomers').onclick=()=>nav('customers');$('quickExport').onclick=exportBackup;
-$('closeModal').onclick=$('cancelModal').onclick=closeOrderModal;$('saveOrder').onclick=saveOrder;
+$('closeModal').onclick=$('cancelModal').onclick=closeOrderModal;$('saveOrder').onclick=saveOrder;$('deleteOrder').onclick=deleteEditingOrder;
 $('addProduct').onclick=()=>makeProductEditor();
 $('productEditors').addEventListener('input',calcEditor);
 ['fPrevious','fShipping','fDiscount','fPaymentAmount'].forEach(id=>$(id).addEventListener('input',calcEditor));
