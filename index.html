@@ -349,10 +349,22 @@ async function generatePaymentPdf(o){
  rule(footerY+17.5);
  set('bold',6.4,navy);doc.text('CONTACT SOLE SANCTUARY',C,footerY+23.3,{align:'center'});
  const wa='+91 8120178600',email='solesanctuary.in@gmail.com';
- set('normal',6.3,muted);doc.text('WhatsApp:',C-1.5,footerY+29.3,{align:'right'});
- set('bold',6.3,navy);doc.text(wa,C,footerY+29.3);let wx=C,wy=footerY+27.1;doc.link(wx,wy,doc.getTextWidth(wa),3.4,{url:'https://wa.me/918120178600'});
- set('normal',6.3,muted);doc.text('Email:',C-1.5,footerY+34.4,{align:'right'});
- set('bold',6.3,navy);doc.text(email,C,footerY+34.4);doc.link(C,footerY+32.2,doc.getTextWidth(email),3.4,{url:'mailto:solesanctuary.in@gmail.com'});
+ // Center each complete contact row as a single group. Previously the label was
+ // right-aligned against the page center while the longer value started at center,
+ // which pushed the email row noticeably to the right.
+ const contactRow=(labelText,valueText,baseline,url)=>{
+  const gap=1.6;
+  set('normal',6.3,muted);const labelWidth=doc.getTextWidth(labelText);
+  set('bold',6.3,navy);const valueWidth=doc.getTextWidth(valueText);
+  const totalWidth=labelWidth+gap+valueWidth;
+  const start=C-totalWidth/2;
+  set('normal',6.3,muted);doc.text(labelText,start,baseline);
+  const valueX=start+labelWidth+gap;
+  set('bold',6.3,navy);doc.text(valueText,valueX,baseline);
+  doc.link(valueX,baseline-2.2,valueWidth,3.4,{url});
+ };
+ contactRow('WhatsApp:',wa,footerY+29.3,'https://wa.me/918120178600');
+ contactRow('Email:',email,footerY+34.4,'mailto:solesanctuary.in@gmail.com');
  return doc.output('blob');
 }
 async function shareOrder(id){
